@@ -3,7 +3,8 @@ from config import bot, OWNER_ID
 from database import load_data, save_data, add_user, is_banned, is_admin, is_owner, get_stats, increment_lookup
 import buttons
 from buttons import ibtn, rbtn, InlineKeyboardMarkup, ReplyKeyboardMarkup
-from utils import safe_send, safe_edit, esc, plink, get_wm, get_support, del_msg, del_prev, menu_msg, ping_ms, lang_name, fmt_num
+from telebot.types import KeyboardButton, KeyboardButtonRequestUsers, KeyboardButtonRequestChat
+from utils import safe_send, safe_edit, esc, plink, get_wm, get_support, del_msg, del_prev, menu_msg, ping_ms, fmt_num
 from registration import get_full_registration_info, get_registration_text, get_telegram_era
 from info_user import extract_user_info
 from info_bot import extract_bot_info
@@ -21,13 +22,30 @@ from owner_panel import show_owner_panel, show_settings_menu, process_set_waterm
 _state = {}
 _start_time = time.time()
 
+REQ_USER = 1
+REQ_BOT = 2
+REQ_CHANNEL = 3
+REQ_GROUP = 4
+REQ_FORUM = 5
+
 
 def _kb(uid):
     m = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    m.add(rbtn('👤 User', 'primary'), rbtn('🤖 Bot', 'success'))
-    m.add(rbtn('📢 Channel', 'primary'), rbtn('👥 Group', 'success'))
-    m.add(rbtn('🏠 My Channel', 'primary'), rbtn('🏠 My Group', 'success'))
-    m.add(rbtn('💬 Forum', 'primary'), rbtn('💬 My Forum', 'success'))
+
+    btn_user = KeyboardButton('👤 User', request_users=KeyboardButtonRequestUsers(
+        request_id=REQ_USER, user_is_bot=False, max_quantity=1))
+    btn_bot = KeyboardButton('🤖 Bot', request_users=KeyboardButtonRequestUsers(
+        request_id=REQ_BOT, user_is_bot=True, max_quantity=1))
+    btn_channel = KeyboardButton('📢 Channel', request_chat=KeyboardButtonRequestChat(
+        request_id=REQ_CHANNEL, chat_is_channel=True))
+    btn_group = KeyboardButton('👥 Group', request_chat=KeyboardButtonRequestChat(
+        request_id=REQ_GROUP, chat_is_channel=False, chat_is_forum=False))
+    btn_forum = KeyboardButton('💬 Forum', request_chat=KeyboardButtonRequestChat(
+        request_id=REQ_FORUM, chat_is_channel=False, chat_is_forum=True))
+
+    m.add(btn_user, btn_bot)
+    m.add(btn_channel, btn_group)
+    m.add(btn_forum)
     if is_admin(uid):
         m.add(rbtn('⚙️ Owner Panel', 'danger'))
     return m
@@ -44,32 +62,23 @@ def _menu(cid, uid, name='User', reply_to=None):
         f'👋 Welcome, {plink(uid, name)}!\n\n'
         f'🔍 Send me any @username or User ID\n'
         f'📨 Or forward any message to get info\n'
-        f'📋 Use the buttons below to select type\n\n'
+        f'📋 Tap a button to pick from your list\n\n'
         f'⚡ Powered by {wm}'
     )
     safe_send(cid, text, _kb(uid), reply_to)
 
 
-MODES = {
-    '👤 User': ('user', '👤 <b>User Info Mode</b>\n\n📝 Send me a @username or User ID\n💡 Or just send any text to get your own info'),
-    '🤖 Bot': ('bot', '🤖 <b>Bot Info Mode</b>\n\n📝 Send me a bot @username\n💡 Example: @BotFather'),
-    '📢 Channel': ('channel', '📢 <b>Channel Info Mode</b>\n\n📝 Send me a channel @username or ID\n💡 Or forward a message from the channel'),
-    '👥 Group': ('group', '👥 <b>Group Info Mode</b>\n\n📝 Send me a group @username or ID\n💡 Or forward a message from the group'),
-    '🏠 My Channel': ('channel', '📢 <b>My Channel Info</b>\n\n📝 Forward a message from your channel\n📝 Or send the channel @username'),
-    '🏠 My Group': ('group', '👥 <b>My Group Info</b>\n\n📝 Forward a message from your group\n📝 Or send the group @username'),
-    '💬 Forum': ('forum', '💬 <b>Forum Info Mode</b>\n\n📝 Send me a forum @username or ID\n💡 Or forward a message from the forum'),
-    '💬 My Forum': ('forum', '💬 <b>My Forum Info</b>\n\n📝 Forward a message from your forum\n📝 Or send the forum @username'),
-}
-
-
-def _set_mode(cid, mode, prompt):
-    _state[cid] = mode
-    wm = esc(get_wm())
-    m = InlineKeyboardMarkup()
-    m.add(ibtn('🔙 Back to Menu', callback_data='back_menu', style='danger'))
-    msg = safe_send(cid, f'{prompt}\n\n⚡ Powered by {wm}', m)
-    if msg:
-        menu_msg[cid] = msg.message_id
+def _guard(uid, cid):
+    if is_banned(uid):
+        safe_send(cid, '🚫 <b>Access Denied</b>')
+        return False
+    if is_maintenance() and not is_admin(uid):
+        safe_send(cid, get_maintenance_text())
+        return False
+    if not check_force_join(uid):
+        show_force_join_prompt(cid, uid)
+        return False
+    return True
 
 
 def _is_target(text):
@@ -78,37 +87,6 @@ def _is_target(text):
     if text.lstrip('-').isdigit():
         return True
     return False
-
-
-def _process(cid, uid, text):
-    mode = _state.pop(cid, None)
-    target = text.strip()
-
-    if not _is_target(target) and not mode:
-        t, m = extract_user_info(uid, cid)
-        safe_send(cid, t, m)
-        return
-
-    if target.lstrip('-').isdigit():
-        target = int(target)
-
-    handlers_map = {
-        'user': extract_user_info, 'bot': extract_bot_info,
-        'channel': extract_channel_info, 'group': extract_group_info,
-        'forum': extract_forum_info,
-    }
-
-    try:
-        if mode and mode in handlers_map:
-            if not _is_target(text.strip()):
-                t, m = extract_user_info(uid, cid)
-            else:
-                t, m = handlers_map[mode](target, cid)
-        else:
-            t, m = _detect(target, cid, uid)
-        safe_send(cid, t, m)
-    except Exception as e:
-        safe_send(cid, f'❌ <b>Error:</b> {esc(str(e))}')
 
 
 def _detect(target, cid, sender_uid=None):
@@ -194,11 +172,7 @@ def _export_json(target, cid):
 def cmd_start(msg):
     uid, cid, name = msg.from_user.id, msg.chat.id, msg.from_user.first_name or 'User'
     add_user(uid)
-    if is_maintenance() and not is_admin(uid):
-        safe_send(cid, get_maintenance_text())
-        return
-    if not check_force_join(uid):
-        show_force_join_prompt(cid, uid)
+    if not _guard(uid, cid):
         return
     _state.pop(cid, None)
     _menu(cid, uid, name, msg.message_id)
@@ -218,17 +192,10 @@ def cmd_help(msg):
         '🔹 /about — About this bot\n'
         '🔹 /json — Export info as JSON file\n\n'
         '<b>📋 How to use:</b>\n\n'
-        '1️⃣ Select a type using the buttons\n'
-        '2️⃣ Send a @username or numeric ID\n'
+        '1️⃣ Tap a button to pick from your list\n'
+        '2️⃣ Or send a @username / numeric ID\n'
         '3️⃣ Or just forward any message!\n\n'
-        '<b>🔍 Supported types:</b>\n\n'
-        '👤 <b>User</b> — Profile info, DC, registration\n'
-        '🤖 <b>Bot</b> — Bot details & capabilities\n'
-        '📢 <b>Channel</b> — Channel statistics\n'
-        '👥 <b>Group</b> — Group info & permissions\n'
-        '💬 <b>Forum</b> — Forum topic group info\n\n'
-        '💡 <b>Tip:</b> Send any random text to get\n'
-        'your own profile info instantly!\n\n'
+        '💡 Send any random text to get your own info\n\n'
         f'⚡ Powered by {wm}'
     )
     m = InlineKeyboardMarkup()
@@ -309,19 +276,62 @@ def cmd_json(msg):
     safe_send(cid, '📄 <b>JSON Export Mode</b>\n\n📝 Send @username or ID to get JSON file\n💡 Or send any text to export your own info', m)
 
 
+@bot.message_handler(content_types=['users_shared'], chat_types=['private'])
+def on_users_shared(msg):
+    uid, cid = msg.from_user.id, msg.chat.id
+    add_user(uid)
+    if not _guard(uid, cid):
+        return
+
+    shared = msg.users_shared
+    if not shared or not shared.users:
+        return
+
+    target_id = shared.users[0].user_id
+    increment_lookup(uid)
+
+    try:
+        if shared.request_id == REQ_BOT:
+            t, m = extract_bot_info(target_id, cid)
+        else:
+            t, m = extract_user_info(target_id, cid)
+        safe_send(cid, t, m)
+    except Exception as e:
+        safe_send(cid, f'❌ <b>Error:</b> {esc(str(e))}')
+
+
+@bot.message_handler(content_types=['chat_shared'], chat_types=['private'])
+def on_chat_shared(msg):
+    uid, cid = msg.from_user.id, msg.chat.id
+    add_user(uid)
+    if not _guard(uid, cid):
+        return
+
+    shared = msg.chat_shared
+    if not shared:
+        return
+
+    target_id = shared.chat_id
+    increment_lookup(uid)
+
+    try:
+        if shared.request_id == REQ_CHANNEL:
+            t, m = extract_channel_info(target_id, cid)
+        elif shared.request_id == REQ_FORUM:
+            t, m = extract_forum_info(target_id, cid)
+        else:
+            t, m = extract_group_info(target_id, cid)
+        safe_send(cid, t, m)
+    except Exception as e:
+        safe_send(cid, f'❌ <b>Error:</b> {esc(str(e))}')
+
+
 @bot.message_handler(content_types=['text', 'photo', 'video', 'document', 'audio', 'sticker', 'animation', 'voice', 'video_note'],
                      chat_types=['private'],
                      func=lambda m: m.forward_from is not None or m.forward_from_chat is not None or m.forward_sender_name is not None)
 def on_forward(msg):
     uid, cid = msg.from_user.id, msg.chat.id
-    if is_banned(uid):
-        safe_send(cid, '🚫 <b>Access Denied</b>\n\nYou have been banned from using this bot.')
-        return
-    if is_maintenance() and not is_admin(uid):
-        safe_send(cid, get_maintenance_text())
-        return
-    if not check_force_join(uid):
-        show_force_join_prompt(cid, uid)
+    if not _guard(uid, cid):
         return
 
     del_msg(cid, msg.message_id)
@@ -365,30 +375,18 @@ def on_text(msg):
     name = msg.from_user.first_name or 'User'
     text = msg.text.strip()
 
-    if is_banned(uid):
-        safe_send(cid, '🚫 <b>Access Denied</b>\n\nYou have been banned from using this bot.')
-        return
-    if is_maintenance() and not is_admin(uid):
-        safe_send(cid, get_maintenance_text())
-        return
-    if not check_force_join(uid):
-        show_force_join_prompt(cid, uid)
+    if not _guard(uid, cid):
         return
 
     del_msg(cid, msg.message_id)
     del_prev(cid)
     add_user(uid)
 
-    if text in MODES:
-        mode, prompt = MODES[text]
-        _set_mode(cid, mode, prompt)
-        return
-
     if text == '⚙️ Owner Panel':
         if is_admin(uid):
             show_owner_panel(cid, user_id=uid)
         else:
-            safe_send(cid, '🚫 <b>Access Denied</b>\n\nYou are not authorized to access the owner panel.')
+            safe_send(cid, '🚫 <b>Access Denied</b>')
         return
 
     cur_state = _state.get(cid)
@@ -403,7 +401,17 @@ def on_text(msg):
             _export_json(uid, cid)
         return
 
-    _process(cid, uid, text)
+    target = text.strip()
+    if _is_target(target):
+        if target.lstrip('-').isdigit():
+            target = int(target)
+        increment_lookup(uid)
+        t, m = _detect(target, cid, uid)
+        safe_send(cid, t, m)
+    else:
+        increment_lookup(uid)
+        t, m = extract_user_info(uid, cid)
+        safe_send(cid, t, m)
 
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -499,18 +507,13 @@ def on_callback(call):
         return
 
     if d == 'owner_settings':
-        if _admin_gate():
-            show_settings_menu(cid, user_id=uid, msg_id=mid)
+        if _admin_gate(): show_settings_menu(cid, user_id=uid, msg_id=mid)
         return
-
     if d == 'owner_maintenance':
-        if _admin_gate():
-            show_maintenance_settings(cid, mid)
+        if _admin_gate(): show_maintenance_settings(cid, mid)
         return
-
     if d == 'owner_forcejoin':
-        if _admin_gate():
-            show_force_join_settings(cid, mid)
+        if _admin_gate(): show_force_join_settings(cid, mid)
         return
 
     if d == 'owner_broadcast':
@@ -527,46 +530,31 @@ def on_callback(call):
         return
 
     if d == 'owner_admins':
-        if _owner_gate():
-            show_admin_list(cid, mid)
+        if _owner_gate(): show_admin_list(cid, mid)
         return
-
     if d == 'owner_ban':
-        if _admin_gate():
-            show_ban_menu(cid, mid)
+        if _admin_gate(): show_ban_menu(cid, mid)
         return
-
     if d == 'owner_users':
-        if _admin_gate():
-            show_users_list(cid, page=0, msg_id=mid)
+        if _admin_gate(): show_users_list(cid, page=0, msg_id=mid)
         return
 
     if d == 'owner_watermark':
         if _admin_gate():
-            safe_edit(cid,
-                '💎 <b>Set Watermark</b>\n\n📝 Send the new watermark text:',
-                _cancel_mk(), mid)
+            safe_edit(cid, '💎 <b>Set Watermark</b>\n\n📝 Send the new watermark text:', _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_set_watermark(m, cid))
         return
-
     if d == 'owner_support':
         if _admin_gate():
-            safe_edit(cid,
-                '🔗 <b>Set Support Link</b>\n\n📝 Send the new support link\n(e.g. https://t.me/your_channel):',
-                _cancel_mk(), mid)
+            safe_edit(cid, '🔗 <b>Set Support Link</b>\n\n📝 Send the new support link:', _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_set_support(m, cid))
         return
-
     if d == 'owner_lookups':
-        if _admin_gate():
-            show_lookup_stats(cid, mid)
+        if _admin_gate(): show_lookup_stats(cid, mid)
         return
-
     if d == 'owner_welcome':
         if _admin_gate():
-            safe_edit(cid,
-                '📝 <b>Set Welcome Message</b>\n\n📝 Send the new welcome message:',
-                _cancel_mk(), mid)
+            safe_edit(cid, '📝 <b>Set Welcome Message</b>\n\n📝 Send the new welcome message:', _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_set_welcome(m, cid))
         return
 
@@ -577,100 +565,70 @@ def on_callback(call):
         return
 
     if d == 'maint_toggle':
-        if _admin_gate():
-            toggle_maintenance(cid, mid)
+        if _admin_gate(): toggle_maintenance(cid, mid)
         return
-
     if d == 'maint_edit_msg':
         if _admin_gate():
-            safe_edit(cid,
-                '✏️ <b>Maintenance Message</b>\n\n📝 Send the new maintenance message:',
-                _cancel_mk(), mid)
+            safe_edit(cid, '✏️ <b>Maintenance Message</b>\n\n📝 Send the new message:', _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_maintenance_msg(m, cid))
         return
 
     if d == 'fj_toggle':
-        if _admin_gate():
-            toggle_force_join(cid, mid)
+        if _admin_gate(): toggle_force_join(cid, mid)
         return
-
     if d == 'fj_add':
         if _admin_gate():
-            safe_edit(cid,
-                '➕ <b>Add Channel</b>\n\n📝 Send the channel link or @username\n(e.g. https://t.me/channel or @channel):',
-                _cancel_mk(), mid)
+            safe_edit(cid, '➕ <b>Add Channel</b>\n\n📝 Send t.me link or @username:', _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_add_fj_channel(m, cid))
         return
-
     if d.startswith('fj_del_'):
-        if _admin_gate():
-            remove_fj_channel(cid, d[7:], mid)
+        if _admin_gate(): remove_fj_channel(cid, d[7:], mid)
         return
 
     if d == 'ban_user':
         if _admin_gate():
-            safe_edit(cid,
-                '🔨 <b>Ban User</b>\n\n📝 Send the User ID to ban:',
-                _cancel_mk(), mid)
+            safe_edit(cid, '🔨 <b>Ban User</b>\n\n📝 Send the User ID to ban:', _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_ban_user(m, cid))
         return
-
     if d == 'unban_list':
-        if _admin_gate():
-            show_banned_list(cid, mid)
+        if _admin_gate(): show_banned_list(cid, mid)
         return
-
     if d.startswith('unban_'):
         if _admin_gate():
-            try:
-                unban_user(cid, int(d[6:]), mid)
-            except ValueError:
-                pass
+            try: unban_user(cid, int(d[6:]), mid)
+            except ValueError: pass
         return
 
     if d == 'add_admin':
         if _owner_gate():
-            safe_edit(cid,
-                '➕ <b>Add Admin</b>\n\n📝 Send the User ID to add as admin:',
-                _cancel_mk(), mid)
+            safe_edit(cid, '➕ <b>Add Admin</b>\n\n📝 Send the User ID:', _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_add_admin(m, cid))
         return
-
     if d.startswith('deladm_'):
         if _owner_gate():
-            try:
-                remove_admin(cid, int(d[7:]), mid)
-            except ValueError:
-                pass
+            try: remove_admin(cid, int(d[7:]), mid)
+            except ValueError: pass
         return
 
     if d.startswith('users_page_'):
         if _admin_gate():
-            try:
-                show_users_list(cid, page=int(d[11:]), msg_id=mid)
-            except ValueError:
-                show_users_list(cid, page=0, msg_id=mid)
+            try: show_users_list(cid, page=int(d[11:]), msg_id=mid)
+            except ValueError: show_users_list(cid, page=0, msg_id=mid)
         return
-
     if d.startswith('user_detail_'):
         if _admin_gate():
-            try:
-                show_user_detail(cid, int(d[12:]), mid)
-            except ValueError:
-                pass
+            try: show_user_detail(cid, int(d[12:]), mid)
+            except ValueError: pass
         return
-
     if d == 'export_users':
-        if _admin_gate():
-            export_users(cid)
+        if _admin_gate(): export_users(cid)
         return
 
     if d.startswith('ban_direct_'):
         if _admin_gate():
             try:
                 tid = int(d[11:])
-                if tid == OWNER_ID:
-                    return
+                if tid == OWNER_ID: return
                 data = load_data()
                 bl = data.setdefault("banned_users", [])
                 if tid not in bl:
@@ -679,60 +637,40 @@ def on_callback(call):
                     safe_send(cid, f"🚫 <code>{tid}</code> banned!")
                 else:
                     safe_send(cid, "⚠️ Already banned.")
-            except ValueError:
-                pass
+            except ValueError: pass
         return
 
     if d == 'set_watermark':
         if _admin_gate():
-            safe_edit(cid,
-                '💎 <b>Set Watermark</b>\n\n📝 Send the new watermark text:',
-                _cancel_mk(), mid)
+            safe_edit(cid, '💎 <b>Set Watermark</b>\n\n📝 Send new text:', _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_set_watermark(m, cid))
         return
-
     if d == 'set_support':
         if _admin_gate():
-            safe_edit(cid,
-                '🔗 <b>Set Support Link</b>\n\n📝 Send the new support link:',
-                _cancel_mk(), mid)
+            safe_edit(cid, '🔗 <b>Set Support Link</b>\n\n📝 Send new link:', _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_set_support(m, cid))
         return
-
     if d == 'set_welcome':
         if _admin_gate():
-            safe_edit(cid,
-                '📝 <b>Set Welcome Message</b>\n\n📝 Send the new welcome message:',
-                _cancel_mk(), mid)
+            safe_edit(cid, '📝 <b>Set Welcome</b>\n\n📝 Send new message:', _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_set_welcome(m, cid))
         return
 
     if d == 'back_owner':
-        if _admin_gate():
-            show_owner_panel(cid, user_id=uid, msg_id=mid)
+        if _admin_gate(): show_owner_panel(cid, user_id=uid, msg_id=mid)
         return
-
     if d == 'back_settings':
-        if _admin_gate():
-            show_settings_menu(cid, user_id=uid, msg_id=mid)
+        if _admin_gate(): show_settings_menu(cid, user_id=uid, msg_id=mid)
         return
-
     if d == 'back_ban':
-        if _admin_gate():
-            show_ban_menu(cid, mid)
+        if _admin_gate(): show_ban_menu(cid, mid)
         return
-
     if d == 'back_forcejoin':
-        if _admin_gate():
-            show_force_join_settings(cid, mid)
+        if _admin_gate(): show_force_join_settings(cid, mid)
         return
-
     if d == 'back_maintenance':
-        if _admin_gate():
-            show_maintenance_settings(cid, mid)
+        if _admin_gate(): show_maintenance_settings(cid, mid)
         return
-
     if d == 'back_users':
-        if _admin_gate():
-            show_users_list(cid, page=0, msg_id=mid)
+        if _admin_gate(): show_users_list(cid, page=0, msg_id=mid)
         return

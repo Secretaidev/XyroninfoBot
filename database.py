@@ -1,102 +1,107 @@
-import json, os, threading, time
+import time
+from pymongo import MongoClient
+from config import OWNER_ID, MONGO_URI
 
-DATA_FILE = "userinfo_bot_data.json"
-_lock = threading.RLock()
+_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+_db = _client["xyron_info_bot"]
+_col = _db["bot_data"]
+
 _cache = {"data": None, "ts": 0}
-CACHE_TTL = 2
+_TTL = 2
 
-DEFAULT_SETTINGS = {
-    "watermark": "Xyron Info",
-    "maintenance_mode": False,
-    "maintenance_message": "🔧 Bot is under maintenance. Please try again later.",
-    "welcome_message": "",
-    "support_link": "https://t.me/its_Xyron",
-    "force_join_enabled": False,
-    "force_join_channels": [],
+_DEFAULT = {
+    "_id": "main",
+    "users": [],
+    "settings": {
+        "watermark": "Xyron Info",
+        "support_link": "https://t.me/its_Xyron",
+        "welcome_message": "",
+        "maintenance_mode": False,
+        "maintenance_message": "🔧 Bot is under maintenance. Please try again later.",
+        "force_join_enabled": False,
+        "force_join_channels": [],
+    },
+    "banned_users": [],
+    "extra_admins": [],
+    "lookup_stats": {},
+    "total_lookups": 0,
 }
 
-def _defaults():
-    return {
-        "users": [],
-        "banned_users": [],
-        "extra_admins": [],
-        "settings": dict(DEFAULT_SETTINGS),
-        "lookup_stats": {},
-        "total_lookups": 0,
-    }
 
-def _read():
-    if not os.path.exists(DATA_FILE):
-        return _defaults()
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, IOError):
-        return _defaults()
-    base = _defaults()
-    for k in base:
-        data.setdefault(k, base[k])
-    for k in DEFAULT_SETTINGS:
-        data["settings"].setdefault(k, DEFAULT_SETTINGS[k])
-    return data
+def _init():
+    doc = _col.find_one({"_id": "main"})
+    if not doc:
+        _col.insert_one(_DEFAULT.copy())
+        return _DEFAULT.copy()
+    return doc
 
-def _write(data):
-    tmp = DATA_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    os.replace(tmp, DATA_FILE)
 
 def load_data():
-    with _lock:
-        now = time.time()
-        if _cache["data"] and now - _cache["ts"] < CACHE_TTL:
-            return _cache["data"]
-        data = _read()
-        _cache["data"] = data
-        _cache["ts"] = now
-        return data
+    now = time.time()
+    if _cache["data"] and now - _cache["ts"] < _TTL:
+        return _cache["data"]
+    doc = _col.find_one({"_id": "main"})
+    if not doc:
+        doc = _init()
+    for key in _DEFAULT:
+        if key not in doc and key != "_id":
+            doc[key] = _DEFAULT[key]
+    _cache["data"] = doc
+    _cache["ts"] = now
+    return doc
+
 
 def save_data(data):
-    with _lock:
-        _write(data)
-        _cache["data"] = data
-        _cache["ts"] = time.time()
+    data["_id"] = "main"
+    _col.replace_one({"_id": "main"}, data, upsert=True)
+    _cache["data"] = None
+    _cache["ts"] = 0
 
-def add_user(user_id):
-    with _lock:
-        data = load_data()
-        uid = int(user_id)
-        if uid not in data["users"]:
-            data["users"].append(uid)
-            save_data(data)
 
-def increment_lookup(user_id):
-    with _lock:
-        data = load_data()
-        k = str(user_id)
-        data["lookup_stats"][k] = data["lookup_stats"].get(k, 0) + 1
-        data["total_lookups"] = data.get("total_lookups", 0) + 1
-        save_data(data)
+def add_user(uid):
+    uid = int(uid)
+    _col.update_one(
+        {"_id": "main"},
+        {"$addToSet": {"users": uid}},
+        upsert=True
+    )
+    _cache["data"] = None
+    _cache["ts"] = 0
 
-def is_banned(user_id):
-    return int(user_id) in load_data().get("banned_users", [])
 
-def is_admin(user_id):
-    from config import OWNER_ID
-    uid = int(user_id)
+def increment_lookup(uid):
+    uid_str = str(uid)
+    _col.update_one(
+        {"_id": "main"},
+        {"$inc": {"total_lookups": 1, f"lookup_stats.{uid_str}": 1}},
+        upsert=True
+    )
+    _cache["data"] = None
+    _cache["ts"] = 0
+
+
+def is_banned(uid):
+    doc = load_data()
+    return int(uid) in doc.get("banned_users", [])
+
+
+def is_admin(uid):
+    uid = int(uid)
     if uid == OWNER_ID:
         return True
-    return uid in load_data().get("extra_admins", [])
+    doc = load_data()
+    return uid in doc.get("extra_admins", [])
 
-def is_owner(user_id):
-    from config import OWNER_ID
-    return int(user_id) == OWNER_ID
+
+def is_owner(uid):
+    return int(uid) == OWNER_ID
+
 
 def get_stats():
-    d = load_data()
+    doc = load_data()
     return {
-        "total_users": len(d.get("users", [])),
-        "banned_users": len(d.get("banned_users", [])),
-        "total_admins": len(d.get("extra_admins", [])),
-        "total_lookups": d.get("total_lookups", 0),
+        "total_users": len(doc.get("users", [])),
+        "total_lookups": doc.get("total_lookups", 0),
+        "total_admins": len(doc.get("extra_admins", [])),
+        "banned_users": len(doc.get("banned_users", [])),
     }
