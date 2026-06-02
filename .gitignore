@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+userinfo_bot_data.json
+userinfo_bot_data.json.tmp
+*.log
+.vscode/
+.idea/
