@@ -1,4 +1,4 @@
-import threading, os, time
+import threading, os, time, traceback
 from config import bot
 import buttons
 import handlers
@@ -7,29 +7,42 @@ from telebot.types import BotCommand
 
 
 def _poll():
-    time.sleep(2)
+    time.sleep(3)
+    print('🔄 Starting polling thread...')
+    try:
+        me = bot.get_me()
+        print(f'✅ Bot connected: @{me.username} (ID: {me.id})')
+    except Exception as e:
+        print(f'❌ Bot connection failed: {e}')
+        return
+
     while True:
         try:
+            print('🔄 Polling started...')
             bot.infinity_polling(
-                allowed_updates=['message', 'callback_query'],
                 timeout=30,
                 long_polling_timeout=25,
             )
         except Exception as e:
             print(f'⚠️ Polling error: {e}')
+            traceback.print_exc()
             time.sleep(5)
 
 
 if __name__ == '__main__':
+    print('🔱 Initializing...')
+
     try:
         bot.remove_webhook()
-    except Exception:
-        pass
+        print('✅ Webhook removed')
+    except Exception as e:
+        print(f'⚠️ Webhook remove: {e}')
 
     try:
         bot.delete_webhook(drop_pending_updates=True)
-    except Exception:
-        pass
+        print('✅ Webhook deleted')
+    except Exception as e:
+        print(f'⚠️ Webhook delete: {e}')
 
     try:
         bot.set_my_commands([
@@ -40,8 +53,9 @@ if __name__ == '__main__':
             BotCommand('/about', '🔱 About this bot'),
             BotCommand('/json', '📄 Export info as JSON'),
         ])
-    except Exception:
-        pass
+        print('✅ Commands set')
+    except Exception as e:
+        print(f'⚠️ Commands: {e}')
 
     t = threading.Thread(target=_poll, daemon=True)
     t.start()
