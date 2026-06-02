@@ -29,12 +29,7 @@ def check_force_join(user_id):
 def show_force_join_prompt(cid, uid=None):
     try:
         chs = load_data()["settings"].get("force_join_channels", [])
-        text = (
-            "━━━━━━━━━━━━━━━\n"
-            "《 🔐 JOIN REQUIRED 》\n"
-            "━━━━━━━━━━━━━━━\n\n"
-            "📢 Join our channels to continue:\n"
-        )
+        text = "🔐 <b>Join Required</b>\n\n📢 Join our channels to continue:\n"
         m = InlineKeyboardMarkup()
         for ch in chs:
             un = ch_username(ch)
@@ -55,9 +50,7 @@ def show_force_join_settings(cid, mid=None):
         sty = "danger" if on else "success"
 
         text = (
-            "━━━━━━━━━━━━━━━\n"
-            "《 📢 FORCE JOIN 》\n"
-            "━━━━━━━━━━━━━━━\n\n"
+            f"📢 <b>Force Join</b>\n\n"
             f"📌 <b>Status:</b> {status}\n"
             f"📊 <b>Channels:</b> {len(chs)}\n\n"
         )
@@ -67,7 +60,6 @@ def show_force_join_settings(cid, mid=None):
                 text += f"  {i+1}. @{un}\n"
         else:
             text += "  <i>No channels yet.</i>\n"
-        text += "\n━━━━━━━━━━━━━━━"
 
         m = InlineKeyboardMarkup()
         m.row(ibtn(tog, callback_data="fj_toggle", style=sty))
@@ -75,7 +67,7 @@ def show_force_join_settings(cid, mid=None):
             un = ch_username(ch)
             m.row(ibtn(f"🗑 Remove @{un}", callback_data=f"fj_del_{i}", style="danger"))
         m.row(ibtn("➕ Add Channel", callback_data="fj_add", style="primary"))
-        m.row(ibtn("🔙 Back", callback_data="back_owner", style="danger"))
+        m.row(ibtn("🔙 Back to Panel", callback_data="back_owner", style="danger"))
 
         if mid:
             safe_edit(cid, text, m, mid)

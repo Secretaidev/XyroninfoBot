@@ -41,21 +41,13 @@ def show_owner_panel(cid, user_id=None, msg_id=None):
         fj = "✅ ON" if d["settings"].get("force_join_enabled", False) else "❌ OFF"
 
         text = (
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            "《 👑 OWNER PANEL 》\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            "📊 DATABASE STATISTICS\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"👑 <b>Owner Panel</b>\n\n"
             f"👤 <b>Total Users:</b> {s['total_users']}\n"
             f"🔍 <b>Total Lookups:</b> {s['total_lookups']}\n"
             f"👮 <b>Extra Admins:</b> {s['total_admins']}\n"
             f"🚫 <b>Banned Users:</b> {s['banned_users']}\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            "⚙️ QUICK STATUS\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"🛡️ <b>Maintenance:</b> {maint}\n"
-            f"📢 <b>Force Join:</b> {fj}\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━"
+            f"📢 <b>Force Join:</b> {fj}\n"
         )
         m = get_owner_keyboard()
         if msg_id:
@@ -78,13 +70,10 @@ def show_settings_menu(cid, user_id=None, msg_id=None):
             wl = esc(wl)
 
         text = (
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            "《 🔧 BOT SETTINGS 》\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🔧 <b>Bot Settings</b>\n\n"
             f"💎 <b>Watermark:</b> {wm}\n\n"
             f"🔗 <b>Support Link:</b> {sl}\n\n"
-            f"📝 <b>Welcome Message:</b>\n<i>{wl}</i>\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━"
+            f"📝 <b>Welcome Message:</b>\n<i>{wl}</i>\n"
         )
         m = InlineKeyboardMarkup()
         m.row(ibtn("💎 Change Watermark", callback_data="set_watermark", style="primary"))

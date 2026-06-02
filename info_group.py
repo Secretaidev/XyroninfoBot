@@ -35,10 +35,6 @@ def extract_group_info(target, chat_id):
     desc = esc(chat.description) if chat.description else "—"
     photo = "✅ Yes" if chat.photo else "❌ No"
     gtype = "Supergroup" if chat.type == "supergroup" else "Group"
-    is_verified = getattr(chat, "is_verified", False)
-    is_scam = getattr(chat, "is_scam", False)
-    is_fake = getattr(chat, "is_fake", False)
-
     members = "🔒 Unknown"
     try:
         members = fmt_num(bot.get_chat_member_count(chat.id))
@@ -51,24 +47,10 @@ def extract_group_info(target, chat_id):
     hidden = "✅ Yes" if getattr(chat, "has_hidden_members", False) else "❌ No"
     antispam = "✅ Yes" if getattr(chat, "has_aggressive_anti_spam_enabled", False) else "❌ No"
     perms = _perms(getattr(chat, "permissions", None))
-
-    badges = " ".join(filter(None, [
-        "✅ Verified" if is_verified else "",
-        "⚠️ SCAM" if is_scam else "",
-        "⚠️ FAKE" if is_fake else "",
-    ]))
-    badge_line = f"\n🏷 <b>Badges:</b> {badges}" if badges else ""
-
-    invite = ""
-    if getattr(chat, "invite_link", None):
-        invite = f"\n🔗 <b>Invite Link:</b> <a href='{chat.invite_link}'>Join</a>"
-
     share = f"tg://msg_url?url=https://t.me/{chat.username}" if chat.username else f"tg://msg_url?url=grp_{gid}"
 
     text = (
-        f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"《 👥 GROUP INFORMATION 》\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👥 <b>Group</b>\n\n"
         f"🆔 <b>Group ID:</b> <code>{gid}</code>\n"
         f"📛 <b>Title:</b> {title}\n"
         f"🔗 <b>Username:</b> {un}\n"
@@ -79,10 +61,9 @@ def extract_group_info(target, chat_id):
         f"🔒 <b>Protected Content:</b> {protected}\n"
         f"👻 <b>Hidden Members:</b> {hidden}\n"
         f"🛡 <b>Anti-Spam:</b> {antispam}\n"
-        f"🔗 <b>Linked Channel:</b> {linked}{badge_line}{invite}\n\n"
+        f"🔗 <b>Linked Channel:</b> {linked}\n\n"
         f"📋 <b>Permissions:</b>\n{perms}\n\n"
         f"📝 <b>Description:</b>\n{desc}\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"⚡ <i>Powered by {esc(get_wm())}</i>"
     )
 

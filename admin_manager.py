@@ -8,23 +8,20 @@ def show_admin_list(cid, mid=None):
     try:
         admins = load_data().get("extra_admins", [])
         text = (
-            "━━━━━━━━━━━━━━━\n"
-            "《 👮 ADMINS 》\n"
-            "━━━━━━━━━━━━━━━\n\n"
+            f"👮 <b>Admins</b>\n\n"
             f"👑 <b>Owner:</b> <code>{OWNER_ID}</code>\n"
-            f"👮 <b>Admins:</b> {len(admins)}\n\n"
+            f"👮 <b>Extra Admins:</b> {len(admins)}\n\n"
         )
         if admins:
             for i, a in enumerate(admins, 1):
                 text += f"  {i}. <code>{a}</code>\n"
         else:
             text += "  <i>No extra admins.</i>\n"
-        text += "\n━━━━━━━━━━━━━━━"
         m = InlineKeyboardMarkup()
         for a in admins:
             m.row(ibtn(f"🗑 Remove {a}", callback_data=f"deladm_{a}", style="danger"))
         m.row(ibtn("➕ Add Admin", callback_data="add_admin", style="success"))
-        m.row(ibtn("🔙 Back", callback_data="back_owner", style="danger"))
+        m.row(ibtn("🔙 Back to Panel", callback_data="back_owner", style="danger"))
         if mid:
             safe_edit(cid, text, m, mid)
         else:

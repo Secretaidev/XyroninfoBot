@@ -11,9 +11,9 @@ def show_users_list(cid, page=0, msg_id=None):
         users = load_data().get("users", [])
         total = len(users)
         if not total:
-            text = "━━━━━━━━━━━━━━━\n《 👥 USERS 》\n━━━━━━━━━━━━━━━\n\n<i>No users yet.</i>\n\n━━━━━━━━━━━━━━━"
+            text = "👥 <b>Users</b>\n\n<i>No users yet.</i>\n"
             m = InlineKeyboardMarkup()
-            m.row(ibtn("🔙 Back", callback_data="back_owner", style="danger"))
+            m.row(ibtn("🔙 Back to Panel", callback_data="back_owner", style="danger"))
             if msg_id:
                 safe_edit(cid, text, m, msg_id)
             else:
@@ -25,7 +25,7 @@ def show_users_list(cid, page=0, msg_id=None):
         start = page * PER_PAGE
         chunk = users[start:start + PER_PAGE]
 
-        text = f"━━━━━━━━━━━━━━━\n《 👥 USERS 》\n━━━━━━━━━━━━━━━\n\n📊 <b>Total:</b> {total}  📄 {page+1}/{pages}\n\n"
+        text = f"👥 <b>Users</b>\n\n📊 <b>Total:</b> {total}  📄 {page+1}/{pages}\n\n"
         for i, uid in enumerate(chunk, start + 1):
             icons = ""
             if uid == OWNER_ID:
@@ -35,7 +35,6 @@ def show_users_list(cid, page=0, msg_id=None):
             if is_banned(uid):
                 icons += " 🚫"
             text += f"  {i}. <code>{uid}</code>{icons}\n"
-        text += "\n━━━━━━━━━━━━━━━"
 
         m = InlineKeyboardMarkup()
         nav = []
@@ -46,7 +45,7 @@ def show_users_list(cid, page=0, msg_id=None):
         if nav:
             m.row(*nav)
         m.row(ibtn("📤 Export", callback_data="export_users", style="success"))
-        m.row(ibtn("🔙 Back", callback_data="back_owner", style="danger"))
+        m.row(ibtn("🔙 Back to Panel", callback_data="back_owner", style="danger"))
 
         if msg_id:
             safe_edit(cid, text, m, msg_id)
@@ -66,7 +65,13 @@ def show_user_detail(cid, tid, mid=None):
         role = "👑 Owner" if owner else ("👮 Admin" if admin else "👤 User")
         b_stat = "🚫 Yes" if banned else "✅ No"
 
-        text = f"━━━━━━━━━━━━━━━\n《 👤 USER 》\n━━━━━━━━━━━━━━━\n\n🆔 <b>ID:</b> <code>{tid}</code>\n🏷 <b>Role:</b> {role}\n🚫 <b>Banned:</b> {b_stat}\n🔍 <b>Lookups:</b> {lookups}\n\n━━━━━━━━━━━━━━━"
+        text = (
+            f"👤 <b>User Detail</b>\n\n"
+            f"🆔 <b>ID:</b> <code>{tid}</code>\n"
+            f"🏷 <b>Role:</b> {role}\n"
+            f"🚫 <b>Banned:</b> {b_stat}\n"
+            f"🔍 <b>Lookups:</b> {lookups}\n"
+        )
         m = InlineKeyboardMarkup()
         if not owner:
             if banned:
@@ -100,17 +105,16 @@ def show_lookup_stats(cid, mid=None):
         top = sorted(data.get("lookup_stats", {}).items(), key=lambda x: x[1], reverse=True)[:10]
         medals = ["🥇", "🥈", "🥉"]
 
-        text = f"━━━━━━━━━━━━━━━\n《 📈 LOOKUPS 》\n━━━━━━━━━━━━━━━\n\n🔍 <b>Total:</b> {total}\n\n"
+        text = f"📈 <b>Lookup Stats</b>\n\n🔍 <b>Total:</b> {total}\n\n"
         if top:
             for i, (uid, cnt) in enumerate(top):
                 medal = medals[i] if i < 3 else f"  {i+1}."
                 text += f"{medal} <code>{uid}</code> → {cnt}\n"
         else:
             text += "<i>No data yet.</i>\n"
-        text += "\n━━━━━━━━━━━━━━━"
 
         m = InlineKeyboardMarkup()
-        m.row(ibtn("🔙 Back", callback_data="back_owner", style="danger"))
+        m.row(ibtn("🔙 Back to Panel", callback_data="back_owner", style="danger"))
         if mid:
             safe_edit(cid, text, m, mid)
         else:

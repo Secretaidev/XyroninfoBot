@@ -25,18 +25,15 @@ def show_maintenance_settings(cid, mid=None):
         sty = "danger" if on else "success"
 
         text = (
-            "━━━━━━━━━━━━━━━\n"
-            "《 🛡️ MAINTENANCE 》\n"
-            "━━━━━━━━━━━━━━━\n\n"
+            f"🛡️ <b>Maintenance</b>\n\n"
             f"📌 <b>Status:</b> {status}\n\n"
             f"💬 <b>Message:</b>\n<i>{msg}</i>\n"
-            "\n━━━━━━━━━━━━━━━"
         )
 
         m = InlineKeyboardMarkup()
         m.row(ibtn(tog, callback_data="maint_toggle", style=sty))
         m.row(ibtn("✏️ Edit Message", callback_data="maint_edit_msg", style="primary"))
-        m.row(ibtn("🔙 Back", callback_data="back_owner", style="danger"))
+        m.row(ibtn("🔙 Back to Panel", callback_data="back_owner", style="danger"))
 
         if mid:
             safe_edit(cid, text, m, mid)

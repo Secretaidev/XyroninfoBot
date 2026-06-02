@@ -21,7 +21,6 @@ def extract_forum_info(target, chat_id):
     hidden = "✅ Yes" if getattr(chat, "has_hidden_members", False) else "❌ No"
     protected = "✅ Yes" if getattr(chat, "has_protected_content", False) else "❌ No"
     antispam = "✅ Yes" if getattr(chat, "has_aggressive_anti_spam_enabled", False) else "❌ No"
-
     members = "🔒 Unknown"
     try:
         members = fmt_num(bot.get_chat_member_count(chat.id))
@@ -32,13 +31,10 @@ def extract_forum_info(target, chat_id):
     share = f"tg://msg_url?url=https://t.me/{chat.username}" if chat.username else f"tg://msg_url?url=forum_{fid}"
 
     text = (
-        f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"《 💬 FORUM INFORMATION 》\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"💬 <b>Forum</b>\n\n"
         f"🆔 <b>Forum ID:</b> <code>{fid}</code>\n"
         f"📛 <b>Title:</b> {title}\n"
-        f"🔗 <b>Username:</b> {un}\n"
-        f"💬 <b>Type:</b> Forum Supergroup\n\n"
+        f"🔗 <b>Username:</b> {un}\n\n"
         f"🗂 <b>Forum Topics:</b> {forum}\n"
         f"👥 <b>Members:</b> {members}\n"
         f"🖼 <b>Has Photo:</b> {photo}\n"
@@ -47,7 +43,6 @@ def extract_forum_info(target, chat_id):
         f"🛡 <b>Anti-Spam:</b> {antispam}\n"
         f"🔗 <b>Linked Channel:</b> {linked}\n\n"
         f"📝 <b>Description:</b>\n{desc}\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"⚡ <i>Powered by {esc(get_wm())}</i>"
     )
 

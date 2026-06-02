@@ -8,7 +8,7 @@ from utils import safe_send, safe_edit
 def start_broadcast(cid, mid=None):
     try:
         n = len(load_data().get("users", []))
-        text = f"━━━━━━━━━━━━━━━\n《 📣 BROADCAST 》\n━━━━━━━━━━━━━━━\n\n👥 <b>Recipients:</b> {n}\n\n📝 Send your message now.\n⚠️ /cancel to abort.\n\n━━━━━━━━━━━━━━━"
+        text = f"📣 <b>Broadcast</b>\n\n👥 <b>Recipients:</b> {n}\n\n📝 Send your message now.\n⚠️ /cancel to abort.\n"
         m = InlineKeyboardMarkup()
         m.row(ibtn("❌ Cancel", callback_data="back_owner", style="danger"))
         if mid:
@@ -49,14 +49,14 @@ def _broadcast(cid, src, pmsg):
             if (i + 1) % 25 == 0 or (i + 1) == total:
                 pct = int(((i + 1) / total) * 100)
                 bar = "█" * (pct // 10) + "░" * (10 - pct // 10)
-                txt = f"━━━━━━━━━━━━━━━\n📣 [{bar}] {pct}%\n\n✅ {ok}  ❌ {fail}  📨 {i+1}/{total}\n━━━━━━━━━━━━━━━"
+                txt = f"📣 [{bar}] {pct}%\n\n✅ {ok}  ❌ {fail}  📨 {i+1}/{total}"
                 if pid:
                     safe_edit(cid, txt, message_id=pid)
             time.sleep(0.05)
 
-        final = f"━━━━━━━━━━━━━━━\n《 ✅ DONE 》\n━━━━━━━━━━━━━━━\n\n👥 {total}  ✅ {ok}  ❌ {fail}\n\n━━━━━━━━━━━━━━━"
+        final = f"✅ <b>Broadcast Done!</b>\n\n👥 {total}  ✅ {ok}  ❌ {fail}\n"
         m = InlineKeyboardMarkup()
-        m.row(ibtn("🔙 Back", callback_data="back_owner", style="primary"))
+        m.row(ibtn("🔙 Back to Panel", callback_data="back_owner", style="primary"))
         if pid:
             safe_edit(cid, final, m, pid)
         else:

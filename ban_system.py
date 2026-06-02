@@ -7,11 +7,11 @@ from utils import safe_edit, safe_send
 def show_ban_menu(cid, mid=None):
     try:
         n = len(load_data().get("banned_users", []))
-        text = f"━━━━━━━━━━━━━━━\n《 🚫 BAN SYSTEM 》\n━━━━━━━━━━━━━━━\n\n🚫 <b>Banned:</b> {n}\n\n━━━━━━━━━━━━━━━"
+        text = f"🚫 <b>Ban System</b>\n\n🚫 <b>Banned:</b> {n}\n"
         m = InlineKeyboardMarkup()
         m.row(ibtn("🔨 Ban User", callback_data="ban_user", style="danger"))
         m.row(ibtn("📋 Banned List", callback_data="unban_list", style="primary"))
-        m.row(ibtn("🔙 Back", callback_data="back_owner", style="danger"))
+        m.row(ibtn("🔙 Back to Panel", callback_data="back_owner", style="danger"))
         if mid:
             safe_edit(cid, text, m, mid)
         else:
@@ -22,13 +22,12 @@ def show_ban_menu(cid, mid=None):
 def show_banned_list(cid, mid=None):
     try:
         banned = load_data().get("banned_users", [])
-        text = "━━━━━━━━━━━━━━━\n《 📋 BANNED LIST 》\n━━━━━━━━━━━━━━━\n\n"
+        text = f"📋 <b>Banned List</b>\n\n"
         if not banned:
             text += "<i>No banned users.</i>\n"
         else:
             for i, uid in enumerate(banned, 1):
                 text += f"  {i}. <code>{uid}</code>\n"
-        text += "\n━━━━━━━━━━━━━━━"
         m = InlineKeyboardMarkup()
         for uid in banned:
             m.row(ibtn(f"✅ Unban {uid}", callback_data=f"unban_{uid}", style="success"))

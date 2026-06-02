@@ -31,9 +31,7 @@ def extract_bot_info(target, chat_id):
         pass
 
     text = (
-        f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"《 🤖 BOT INFORMATION 》\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🤖 <b>Bot</b>\n\n"
         f"🆔 <b>Bot ID:</b> <code>{uid}</code>\n"
         f"📛 <b>Name:</b> {name}\n"
         f"🔗 <b>Username:</b> {un}\n\n"
@@ -44,7 +42,6 @@ def extract_bot_info(target, chat_id):
         f"🌐 <b>Web App:</b> {has_main_web}\n\n"
         f"📝 <b>Bio:</b> {bio}\n"
         f"📋 <b>Description:</b>\n{desc}\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"⚡ <i>Powered by {esc(get_wm())}</i>"
     )
 

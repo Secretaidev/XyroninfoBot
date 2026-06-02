@@ -40,27 +40,24 @@ def _cancel_mk():
 def _menu(cid, uid, name='User', reply_to=None):
     wm = esc(get_wm())
     text = (
-        f'━━━━━━━━━━━━━━━━━━━━━\n'
-        f'《 🔱 XYRON INFO BOT 》\n'
-        f'━━━━━━━━━━━━━━━━━━━━━\n\n'
+        f'🔱 <b>Xyron Info Bot</b>\n\n'
         f'👋 Welcome, {plink(uid, name)}!\n\n'
         f'🔍 Send me any @username or User ID\n'
         f'📨 Or forward any message to get info\n'
         f'📋 Use the buttons below to select type\n\n'
-        f'━━━━━━━━━━━━━━━━━━━━━\n'
         f'⚡ Powered by {wm}'
     )
     safe_send(cid, text, _kb(uid), reply_to)
 
 
 MODES = {
-    '👤 User': ('user', '👤 <b>User Info Mode</b>\n\n📝 Send me a @username or User ID'),
-    '🤖 Bot': ('bot', '🤖 <b>Bot Info Mode</b>\n\n📝 Send me a bot @username (e.g. @BotFather)'),
-    '📢 Channel': ('channel', '📢 <b>Channel Info Mode</b>\n\n📝 Send me a channel @username or ID'),
-    '👥 Group': ('group', '👥 <b>Group Info Mode</b>\n\n📝 Send me a group @username or ID'),
+    '👤 User': ('user', '👤 <b>User Info Mode</b>\n\n📝 Send me a @username or User ID\n💡 Or just send any text to get your own info'),
+    '🤖 Bot': ('bot', '🤖 <b>Bot Info Mode</b>\n\n📝 Send me a bot @username\n💡 Example: @BotFather'),
+    '📢 Channel': ('channel', '📢 <b>Channel Info Mode</b>\n\n📝 Send me a channel @username or ID\n💡 Or forward a message from the channel'),
+    '👥 Group': ('group', '👥 <b>Group Info Mode</b>\n\n📝 Send me a group @username or ID\n💡 Or forward a message from the group'),
     '🏠 My Channel': ('channel', '📢 <b>My Channel Info</b>\n\n📝 Forward a message from your channel\n📝 Or send the channel @username'),
     '🏠 My Group': ('group', '👥 <b>My Group Info</b>\n\n📝 Forward a message from your group\n📝 Or send the group @username'),
-    '💬 Forum': ('forum', '💬 <b>Forum Info Mode</b>\n\n📝 Send me a forum @username or ID'),
+    '💬 Forum': ('forum', '💬 <b>Forum Info Mode</b>\n\n📝 Send me a forum @username or ID\n💡 Or forward a message from the forum'),
     '💬 My Forum': ('forum', '💬 <b>My Forum Info</b>\n\n📝 Forward a message from your forum\n📝 Or send the forum @username'),
 }
 
@@ -70,44 +67,58 @@ def _set_mode(cid, mode, prompt):
     wm = esc(get_wm())
     m = InlineKeyboardMarkup()
     m.add(ibtn('🔙 Back to Menu', callback_data='back_menu', style='danger'))
-    msg = safe_send(cid, f'━━━━━━━━━━━━━━━\n{prompt}\n━━━━━━━━━━━━━━━\n⚡ Powered by {wm}', m)
+    msg = safe_send(cid, f'{prompt}\n\n⚡ Powered by {wm}', m)
     if msg:
         menu_msg[cid] = msg.message_id
+
+
+def _is_target(text):
+    if text.startswith('@') and len(text) > 1:
+        return True
+    if text.lstrip('-').isdigit():
+        return True
+    return False
 
 
 def _process(cid, uid, text):
     mode = _state.pop(cid, None)
     target = text.strip()
+
+    if not _is_target(target) and not mode:
+        t, m = extract_user_info(uid, cid)
+        safe_send(cid, t, m)
+        return
+
     if target.lstrip('-').isdigit():
         target = int(target)
 
-    increment_lookup(uid)
-    handlers = {
+    handlers_map = {
         'user': extract_user_info, 'bot': extract_bot_info,
         'channel': extract_channel_info, 'group': extract_group_info,
         'forum': extract_forum_info,
     }
 
     try:
-        if mode and mode in handlers:
-            t, m = handlers[mode](target, cid)
+        if mode and mode in handlers_map:
+            if not _is_target(text.strip()):
+                t, m = extract_user_info(uid, cid)
+            else:
+                t, m = handlers_map[mode](target, cid)
         else:
-            t, m = _detect(target, cid)
+            t, m = _detect(target, cid, uid)
         safe_send(cid, t, m)
     except Exception as e:
         safe_send(cid, f'❌ <b>Error:</b> {esc(str(e))}')
 
 
-def _detect(target, cid):
+def _detect(target, cid, sender_uid=None):
     try:
         chat = bot.get_chat(target)
     except Exception:
-        return (
-            '❌ <b>Not Found</b>\n\n'
-            '🔍 Could not find this user/chat.\n'
-            '💡 Make sure the username or ID is correct.',
-            None
-        )
+        if sender_uid:
+            return extract_user_info(sender_uid, cid)
+        return ('❌ <b>Not found!</b>\n\nCould not find this user/chat.', None)
+
     if chat.type == 'private':
         un = (chat.username or '').lower()
         return extract_bot_info(target, cid) if un.endswith('bot') else extract_user_info(target, cid)
@@ -132,137 +143,6 @@ def _uptime():
         parts.append(f"{m}m")
     parts.append(f"{s}s")
     return " ".join(parts)
-
-
-@bot.message_handler(commands=['start'], chat_types=['private'])
-def cmd_start(msg):
-    uid, cid, name = msg.from_user.id, msg.chat.id, msg.from_user.first_name or 'User'
-    add_user(uid)
-    if is_maintenance() and not is_admin(uid):
-        safe_send(cid, get_maintenance_text())
-        return
-    if not check_force_join(uid):
-        show_force_join_prompt(cid, uid)
-        return
-    _state.pop(cid, None)
-    _menu(cid, uid, name, msg.message_id)
-
-
-@bot.message_handler(commands=['help'], chat_types=['private'])
-def cmd_help(msg):
-    cid = msg.chat.id
-    sl = get_support()
-    wm = esc(get_wm())
-    text = (
-        '━━━━━━━━━━━━━━━━━━━━━\n'
-        '《 📖 HELP & COMMANDS 》\n'
-        '━━━━━━━━━━━━━━━━━━━━━\n\n'
-        '🔹 /start — Restart the bot\n'
-        '🔹 /help — Show this help menu\n'
-        '🔹 /id — Get your Telegram ID\n'
-        '🔹 /ping — Check bot speed\n'
-        '🔹 /about — About this bot\n'
-        '🔹 /json — Get info as JSON file\n\n'
-        '<b>📋 How to use:</b>\n\n'
-        '1️⃣ Select a type using the buttons\n'
-        '2️⃣ Send a @username or numeric ID\n'
-        '3️⃣ Or just forward any message!\n\n'
-        '<b>🔍 Supported types:</b>\n\n'
-        '👤 <b>User</b> — Profile info, DC, registration\n'
-        '🤖 <b>Bot</b> — Bot details & capabilities\n'
-        '📢 <b>Channel</b> — Channel statistics\n'
-        '👥 <b>Group</b> — Group info & permissions\n'
-        '💬 <b>Forum</b> — Forum topic group info\n\n'
-        '💡 <b>Tip:</b> You can also send any\n'
-        'username/ID without selecting a mode!\n\n'
-        f'━━━━━━━━━━━━━━━━━━━━━\n'
-        f'⚡ Powered by {wm}'
-    )
-    m = InlineKeyboardMarkup()
-    m.add(ibtn('💬 Support', url=sl, style='primary'))
-    m.add(ibtn('🔙 Back to Menu', callback_data='back_menu', style='danger'))
-    safe_send(cid, text, m)
-
-
-@bot.message_handler(commands=['id'], chat_types=['private'])
-def cmd_id(msg):
-    uid, cid = msg.from_user.id, msg.chat.id
-    name = esc(msg.from_user.first_name or 'User')
-    text = (
-        '━━━━━━━━━━━━━━━━━━━━━\n'
-        '《 🆔 YOUR TELEGRAM ID 》\n'
-        '━━━━━━━━━━━━━━━━━━━━━\n\n'
-        f'👤 <b>Name:</b> {name}\n'
-        f'🆔 <b>ID:</b> <code>{uid}</code>\n\n'
-        '━━━━━━━━━━━━━━━━━━━━━'
-    )
-    m = InlineKeyboardMarkup()
-    m.add(ibtn('📋 Copy ID', copy_text=str(uid), style='primary'))
-    m.add(ibtn('🔙 Back to Menu', callback_data='back_menu', style='danger'))
-    safe_send(cid, text, m)
-
-
-@bot.message_handler(commands=['ping'], chat_types=['private'])
-def cmd_ping(msg):
-    cid = msg.chat.id
-    ms = ping_ms()
-    up = _uptime()
-    text = (
-        '━━━━━━━━━━━━━━━━━━━━━\n'
-        '《 🏓 PONG 》\n'
-        '━━━━━━━━━━━━━━━━━━━━━\n\n'
-        f'⚡ <b>Response:</b> {ms}ms\n'
-        f'⏱ <b>Uptime:</b> {up}\n'
-        f'🖥 <b>Status:</b> Running\n\n'
-        '━━━━━━━━━━━━━━━━━━━━━'
-    )
-    m = InlineKeyboardMarkup()
-    m.add(ibtn('🔙 Back to Menu', callback_data='back_menu', style='danger'))
-    safe_send(cid, text, m)
-
-
-@bot.message_handler(commands=['about'], chat_types=['private'])
-def cmd_about(msg):
-    cid = msg.chat.id
-    wm = esc(get_wm())
-    sl = get_support()
-    s = get_stats()
-    text = (
-        '━━━━━━━━━━━━━━━━━━━━━\n'
-        '《 🔱 ABOUT 》\n'
-        '━━━━━━━━━━━━━━━━━━━━━\n\n'
-        f'📛 <b>Name:</b> {wm}\n'
-        '📋 <b>Type:</b> User Info Bot\n\n'
-        '<b>🔍 What I can do:</b>\n\n'
-        '• Extract detailed user profiles\n'
-        '• Detect data center locations\n'
-        '• Estimate registration dates\n'
-        '• Show channel/group statistics\n'
-        '• Identify bot capabilities\n'
-        '• Detect premium & verified status\n'
-        '• Export info as JSON files\n\n'
-        f'👥 <b>Users:</b> {fmt_num(s["total_users"])}\n'
-        f'🔍 <b>Lookups:</b> {fmt_num(s["total_lookups"])}\n\n'
-        f'━━━━━━━━━━━━━━━━━━━━━\n'
-        f'⚡ Powered by {wm}'
-    )
-    m = InlineKeyboardMarkup()
-    m.add(ibtn('💬 Support', url=sl, style='primary'))
-    m.add(ibtn('🔙 Back to Menu', callback_data='back_menu', style='danger'))
-    safe_send(cid, text, m)
-
-
-@bot.message_handler(commands=['json'], chat_types=['private'])
-def cmd_json(msg):
-    cid = msg.chat.id
-    uid = msg.from_user.id
-    if is_banned(uid):
-        safe_send(cid, '🚫 <b>Access Denied</b>')
-        return
-    _state[cid] = 'json'
-    m = InlineKeyboardMarkup()
-    m.add(ibtn('🔙 Back to Menu', callback_data='back_menu', style='danger'))
-    safe_send(cid, '━━━━━━━━━━━━━━━\n📄 <b>JSON Export Mode</b>\n\n📝 Send @username or ID to get JSON file\n━━━━━━━━━━━━━━━', m)
 
 
 def _export_json(target, cid):
@@ -310,6 +190,125 @@ def _export_json(target, cid):
     bot.send_document(cid, f, caption=f"📄 <b>JSON Export</b> — <code>{chat.id}</code>", parse_mode="HTML")
 
 
+@bot.message_handler(commands=['start'], chat_types=['private'])
+def cmd_start(msg):
+    uid, cid, name = msg.from_user.id, msg.chat.id, msg.from_user.first_name or 'User'
+    add_user(uid)
+    if is_maintenance() and not is_admin(uid):
+        safe_send(cid, get_maintenance_text())
+        return
+    if not check_force_join(uid):
+        show_force_join_prompt(cid, uid)
+        return
+    _state.pop(cid, None)
+    _menu(cid, uid, name, msg.message_id)
+
+
+@bot.message_handler(commands=['help'], chat_types=['private'])
+def cmd_help(msg):
+    cid = msg.chat.id
+    sl = get_support()
+    wm = esc(get_wm())
+    text = (
+        '📖 <b>Help & Commands</b>\n\n'
+        '🔹 /start — Restart the bot\n'
+        '🔹 /help — Show this help menu\n'
+        '🔹 /id — Get your Telegram ID\n'
+        '🔹 /ping — Check bot speed\n'
+        '🔹 /about — About this bot\n'
+        '🔹 /json — Export info as JSON file\n\n'
+        '<b>📋 How to use:</b>\n\n'
+        '1️⃣ Select a type using the buttons\n'
+        '2️⃣ Send a @username or numeric ID\n'
+        '3️⃣ Or just forward any message!\n\n'
+        '<b>🔍 Supported types:</b>\n\n'
+        '👤 <b>User</b> — Profile info, DC, registration\n'
+        '🤖 <b>Bot</b> — Bot details & capabilities\n'
+        '📢 <b>Channel</b> — Channel statistics\n'
+        '👥 <b>Group</b> — Group info & permissions\n'
+        '💬 <b>Forum</b> — Forum topic group info\n\n'
+        '💡 <b>Tip:</b> Send any random text to get\n'
+        'your own profile info instantly!\n\n'
+        f'⚡ Powered by {wm}'
+    )
+    m = InlineKeyboardMarkup()
+    m.add(ibtn('💬 Support', url=sl, style='primary'))
+    m.add(ibtn('🔙 Back to Menu', callback_data='back_menu', style='danger'))
+    safe_send(cid, text, m)
+
+
+@bot.message_handler(commands=['id'], chat_types=['private'])
+def cmd_id(msg):
+    uid, cid = msg.from_user.id, msg.chat.id
+    name = esc(msg.from_user.first_name or 'User')
+    text = (
+        f'🆔 <b>Your Telegram ID</b>\n\n'
+        f'👤 <b>Name:</b> {name}\n'
+        f'🆔 <b>ID:</b> <code>{uid}</code>\n'
+    )
+    m = InlineKeyboardMarkup()
+    m.add(ibtn('📋 Copy ID', copy_text=str(uid), style='primary'))
+    m.add(ibtn('🔙 Back to Menu', callback_data='back_menu', style='danger'))
+    safe_send(cid, text, m)
+
+
+@bot.message_handler(commands=['ping'], chat_types=['private'])
+def cmd_ping(msg):
+    cid = msg.chat.id
+    ms = ping_ms()
+    up = _uptime()
+    text = (
+        f'🏓 <b>Pong!</b>\n\n'
+        f'⚡ <b>Response:</b> {ms}ms\n'
+        f'⏱ <b>Uptime:</b> {up}\n'
+        f'🖥 <b>Status:</b> Running\n'
+    )
+    m = InlineKeyboardMarkup()
+    m.add(ibtn('🔙 Back to Menu', callback_data='back_menu', style='danger'))
+    safe_send(cid, text, m)
+
+
+@bot.message_handler(commands=['about'], chat_types=['private'])
+def cmd_about(msg):
+    cid = msg.chat.id
+    wm = esc(get_wm())
+    sl = get_support()
+    s = get_stats()
+    text = (
+        f'🔱 <b>About</b>\n\n'
+        f'📛 <b>Name:</b> {wm}\n'
+        f'📋 <b>Type:</b> User Info Bot\n\n'
+        f'<b>🔍 What I can do:</b>\n\n'
+        f'• Extract detailed user profiles\n'
+        f'• Detect data center locations\n'
+        f'• Estimate registration dates\n'
+        f'• Show channel/group statistics\n'
+        f'• Identify bot capabilities\n'
+        f'• Detect premium & verified status\n'
+        f'• Export info as JSON files\n\n'
+        f'👥 <b>Users:</b> {fmt_num(s["total_users"])}\n'
+        f'🔍 <b>Lookups:</b> {fmt_num(s["total_lookups"])}\n\n'
+        f'⚡ Powered by {wm}'
+    )
+    m = InlineKeyboardMarkup()
+    m.add(ibtn('💬 Support', url=sl, style='primary'))
+    m.add(ibtn('🔙 Back to Menu', callback_data='back_menu', style='danger'))
+    safe_send(cid, text, m)
+
+
+@bot.message_handler(commands=['json'], chat_types=['private'])
+def cmd_json(msg):
+    cid = msg.chat.id
+    uid = msg.from_user.id
+    if is_banned(uid):
+        safe_send(cid, '🚫 <b>Access Denied</b>')
+        return
+    _state[cid] = 'json'
+    m = InlineKeyboardMarkup()
+    m.add(ibtn('🔙 Back to Menu', callback_data='back_menu', style='danger'))
+    safe_send(cid, '📄 <b>JSON Export Mode</b>\n\n📝 Send @username or ID to get JSON file\n💡 Or send any text to export your own info', m)
+
+
 @bot.message_handler(content_types=['text', 'photo', 'video', 'document', 'audio', 'sticker', 'animation', 'voice', 'video_note'],
                      chat_types=['private'],
                      func=lambda m: m.forward_from is not None or m.forward_from_chat is not None or m.forward_sender_name is not None)
@@ -349,14 +348,11 @@ def on_forward(msg):
 
     if msg.forward_sender_name:
         text = (
-            '━━━━━━━━━━━━━━━━━━━━━\n'
-            '《 👻 HIDDEN USER 》\n'
-            '━━━━━━━━━━━━━━━━━━━━━\n\n'
+            f'👻 <b>Hidden User</b>\n\n'
             f'👤 <b>Name:</b> {esc(msg.forward_sender_name)}\n'
-            '🔒 <b>Privacy:</b> Enabled\n\n'
-            '⚠️ This user has hidden their account.\n'
-            'Their forwarded messages cannot reveal their ID.\n\n'
-            '━━━━━━━━━━━━━━━━━━━━━'
+            f'🔒 <b>Privacy:</b> Enabled\n\n'
+            f'⚠️ This user has hidden their account.\n'
+            f'Their forwarded messages cannot reveal their ID.\n'
         )
         m = InlineKeyboardMarkup()
         m.add(ibtn('🔙 Back to Menu', callback_data='back_menu', style='danger'))
@@ -399,9 +395,12 @@ def on_text(msg):
     if cur_state == 'json':
         _state.pop(cid, None)
         target = text.strip()
-        if target.lstrip('-').isdigit():
-            target = int(target)
-        _export_json(target, cid)
+        if _is_target(target):
+            if target.lstrip('-').isdigit():
+                target = int(target)
+            _export_json(target, cid)
+        else:
+            _export_json(uid, cid)
         return
 
     _process(cid, uid, text)
@@ -447,15 +446,12 @@ def on_callback(call):
             return
         ri = get_full_registration_info(tid)
         text = (
-            '━━━━━━━━━━━━━━━━━━━━━\n'
-            '《 📅 REGISTRATION DETAILS 》\n'
-            '━━━━━━━━━━━━━━━━━━━━━\n\n'
+            f'📅 <b>Registration Details</b>\n\n'
             f'🆔 <b>User ID:</b> <code>{tid}</code>\n'
             f'📅 <b>Est. Date:</b> {esc(ri["date"])}\n'
             f'📆 <b>Account Age:</b> {esc(ri["formatted"])}\n'
             f'📅 <b>Year:</b> {ri["year"] or "Unknown"}\n'
-            f'🏛 <b>Telegram Era:</b> {esc(ri["era"])}\n\n'
-            '━━━━━━━━━━━━━━━━━━━━━'
+            f'🏛 <b>Telegram Era:</b> {esc(ri["era"])}\n'
         )
         m = InlineKeyboardMarkup()
         m.add(ibtn('🔙 Back to Menu', callback_data='back_menu', style='danger'))
@@ -489,16 +485,13 @@ def on_callback(call):
         if _admin_gate():
             s = get_stats()
             text = (
-                '━━━━━━━━━━━━━━━━━━━━━\n'
-                '《 📊 BOT STATISTICS 》\n'
-                '━━━━━━━━━━━━━━━━━━━━━\n\n'
+                f'📊 <b>Bot Statistics</b>\n\n'
                 f'👥 <b>Total Users:</b> {fmt_num(s["total_users"])}\n'
                 f'🚫 <b>Banned Users:</b> {s["banned_users"]}\n'
                 f'👑 <b>Extra Admins:</b> {s["total_admins"]}\n'
                 f'🔍 <b>Total Lookups:</b> {fmt_num(s["total_lookups"])}\n'
                 f'⚡ <b>Response:</b> {ping_ms()}ms\n'
-                f'⏱ <b>Uptime:</b> {_uptime()}\n\n'
-                '━━━━━━━━━━━━━━━━━━━━━'
+                f'⏱ <b>Uptime:</b> {_uptime()}\n'
             )
             m = InlineKeyboardMarkup()
             m.add(ibtn('🔙 Back to Panel', callback_data='owner_panel', style='danger'))
@@ -524,14 +517,11 @@ def on_callback(call):
         if _admin_gate():
             n = len(load_data().get("users", []))
             safe_edit(cid,
-                f'━━━━━━━━━━━━━━━━━━━━━\n'
-                f'《 📣 BROADCAST 》\n'
-                f'━━━━━━━━━━━━━━━━━━━━━\n\n'
+                f'📣 <b>Broadcast</b>\n\n'
                 f'👥 <b>Total Recipients:</b> {fmt_num(n)}\n\n'
                 f'📝 Send me the message you want to broadcast.\n'
                 f'You can send <b>text, photo, video, document</b> or any type.\n\n'
-                f'⚠️ Send /cancel to abort.\n\n'
-                f'━━━━━━━━━━━━━━━━━━━━━',
+                f'⚠️ Send /cancel to abort.',
                 _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_broadcast(m, cid))
         return
@@ -554,10 +544,7 @@ def on_callback(call):
     if d == 'owner_watermark':
         if _admin_gate():
             safe_edit(cid,
-                '━━━━━━━━━━━━━━━\n'
-                '《 💎 SET WATERMARK 》\n'
-                '━━━━━━━━━━━━━━━\n\n'
-                '📝 Send the new watermark text:',
+                '💎 <b>Set Watermark</b>\n\n📝 Send the new watermark text:',
                 _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_set_watermark(m, cid))
         return
@@ -565,11 +552,7 @@ def on_callback(call):
     if d == 'owner_support':
         if _admin_gate():
             safe_edit(cid,
-                '━━━━━━━━━━━━━━━\n'
-                '《 🔗 SET SUPPORT LINK 》\n'
-                '━━━━━━━━━━━━━━━\n\n'
-                '📝 Send the new support link\n'
-                '(e.g. https://t.me/your_channel):',
+                '🔗 <b>Set Support Link</b>\n\n📝 Send the new support link\n(e.g. https://t.me/your_channel):',
                 _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_set_support(m, cid))
         return
@@ -582,10 +565,7 @@ def on_callback(call):
     if d == 'owner_welcome':
         if _admin_gate():
             safe_edit(cid,
-                '━━━━━━━━━━━━━━━\n'
-                '《 📝 SET WELCOME MSG 》\n'
-                '━━━━━━━━━━━━━━━\n\n'
-                '📝 Send the new welcome message:',
+                '📝 <b>Set Welcome Message</b>\n\n📝 Send the new welcome message:',
                 _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_set_welcome(m, cid))
         return
@@ -604,10 +584,7 @@ def on_callback(call):
     if d == 'maint_edit_msg':
         if _admin_gate():
             safe_edit(cid,
-                '━━━━━━━━━━━━━━━\n'
-                '《 ✏️ MAINTENANCE MESSAGE 》\n'
-                '━━━━━━━━━━━━━━━\n\n'
-                '📝 Send the new maintenance message:',
+                '✏️ <b>Maintenance Message</b>\n\n📝 Send the new maintenance message:',
                 _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_maintenance_msg(m, cid))
         return
@@ -620,11 +597,7 @@ def on_callback(call):
     if d == 'fj_add':
         if _admin_gate():
             safe_edit(cid,
-                '━━━━━━━━━━━━━━━\n'
-                '《 ➕ ADD CHANNEL 》\n'
-                '━━━━━━━━━━━━━━━\n\n'
-                '📝 Send the channel link or @username\n'
-                '(e.g. https://t.me/channel or @channel):',
+                '➕ <b>Add Channel</b>\n\n📝 Send the channel link or @username\n(e.g. https://t.me/channel or @channel):',
                 _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_add_fj_channel(m, cid))
         return
@@ -637,10 +610,7 @@ def on_callback(call):
     if d == 'ban_user':
         if _admin_gate():
             safe_edit(cid,
-                '━━━━━━━━━━━━━━━\n'
-                '《 🔨 BAN USER 》\n'
-                '━━━━━━━━━━━━━━━\n\n'
-                '📝 Send the User ID to ban:',
+                '🔨 <b>Ban User</b>\n\n📝 Send the User ID to ban:',
                 _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_ban_user(m, cid))
         return
@@ -661,10 +631,7 @@ def on_callback(call):
     if d == 'add_admin':
         if _owner_gate():
             safe_edit(cid,
-                '━━━━━━━━━━━━━━━\n'
-                '《 ➕ ADD ADMIN 》\n'
-                '━━━━━━━━━━━━━━━\n\n'
-                '📝 Send the User ID to add as admin:',
+                '➕ <b>Add Admin</b>\n\n📝 Send the User ID to add as admin:',
                 _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_add_admin(m, cid))
         return
@@ -719,10 +686,7 @@ def on_callback(call):
     if d == 'set_watermark':
         if _admin_gate():
             safe_edit(cid,
-                '━━━━━━━━━━━━━━━\n'
-                '《 💎 SET WATERMARK 》\n'
-                '━━━━━━━━━━━━━━━\n\n'
-                '📝 Send the new watermark text:',
+                '💎 <b>Set Watermark</b>\n\n📝 Send the new watermark text:',
                 _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_set_watermark(m, cid))
         return
@@ -730,10 +694,7 @@ def on_callback(call):
     if d == 'set_support':
         if _admin_gate():
             safe_edit(cid,
-                '━━━━━━━━━━━━━━━\n'
-                '《 🔗 SET SUPPORT LINK 》\n'
-                '━━━━━━━━━━━━━━━\n\n'
-                '📝 Send the new support link:',
+                '🔗 <b>Set Support Link</b>\n\n📝 Send the new support link:',
                 _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_set_support(m, cid))
         return
@@ -741,10 +702,7 @@ def on_callback(call):
     if d == 'set_welcome':
         if _admin_gate():
             safe_edit(cid,
-                '━━━━━━━━━━━━━━━\n'
-                '《 📝 SET WELCOME MESSAGE 》\n'
-                '━━━━━━━━━━━━━━━\n\n'
-                '📝 Send the new welcome message:',
+                '📝 <b>Set Welcome Message</b>\n\n📝 Send the new welcome message:',
                 _cancel_mk(), mid)
             bot.register_next_step_handler_by_chat_id(cid, lambda m: process_set_welcome(m, cid))
         return
